@@ -104,6 +104,7 @@ const defaultSettings = {
   preferences: {
     rowMethod: true,
     focusMethod: true,
+    accentColor: '#6366f1',
   },
 };
 
@@ -986,6 +987,9 @@ function getDB() {
 
 function saveDB(db) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('focuspoint-db-change'));
+  }
 }
 
 function initDB(forceReset = false) {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
+import { requestNotificationPermission, showAppNotification } from '../utils/notifications.js';
 
 const PRESETS = [
   { id: '25-5', label: '25/5', focusMinutes: 25, breakMinutes: 5 },
@@ -141,11 +142,6 @@ const resolveTimerState = (state, now = Date.now()) => {
   return next;
 };
 
-const requestNotificationPermission = () => {
-  if (!('Notification' in window) || window.Notification.permission !== 'default') return;
-  window.Notification.requestPermission().catch(() => {});
-};
-
 const playTimerSound = () => {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
@@ -258,17 +254,11 @@ export default function SmartPomodoro({ open = true, onClose, embedded = false }
     playTimerSound();
     setStatusMessage(copy.body);
 
-    if ('Notification' in window && window.Notification.permission === 'granted') {
-      try {
-        new window.Notification(copy.title, {
-          body: copy.body,
-          icon: '/pwa-192.png',
-          badge: '/pwa-192.png',
-        });
-      } catch {
-        // The in-app status message still covers browsers that block notifications.
-      }
-    }
+    showAppNotification(copy.title, {
+      body: copy.body,
+      tag: pendingAlert.key,
+      data: { url: '/pomodoro' },
+    });
 
     setTimerState((current) => {
       if (current.pendingAlert?.key !== pendingAlert.key) return current;

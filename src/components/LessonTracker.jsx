@@ -88,7 +88,7 @@ export default function LessonTracker({ onDataChange }) {
           </p>
         </div>
 
-        <button type="button" className="btn-secondary min-h-11 justify-center" onClick={goToTemplates}>
+        <button type="button" className="btn-secondary hidden min-h-11 justify-center sm:inline-flex" onClick={goToTemplates}>
           <Layers3 className="h-4 w-4" />
           Manage Courses
         </button>

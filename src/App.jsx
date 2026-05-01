@@ -6,10 +6,10 @@ import {
   Clock,
   CalendarDays,
   Timer,
-  Layers3,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings as SettingsIcon,
   Sun,
 } from 'lucide-react';
 import Dashboard from './components/Dashboard.jsx';
@@ -18,15 +18,17 @@ import ExamCountdown from './components/ExamCountdown.jsx';
 import Timetable from './components/Timetable.jsx';
 import CourseManagement from './components/CourseManagement.jsx';
 import Pomodoro from './components/Pomodoro.jsx';
+import Settings from './components/Settings.jsx';
+import TimetableNotificationScheduler from './components/TimetableNotificationScheduler.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/tracker', label: 'Tracker', icon: BookOpen },
-  { path: '/courses', label: 'Courses', icon: Layers3 },
   { path: '/countdown', label: 'Exams', icon: Clock },
   { path: '/pomodoro', label: 'Pomodoro', icon: Timer },
   { path: '/timetable', label: 'Timetable', icon: CalendarDays },
+  { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 export default function App() {
@@ -63,6 +65,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--surface-primary)' }}>
+      <TimetableNotificationScheduler />
 
       {/* ===== Desktop Sidebar (collapsible) ===== */}
       <aside
@@ -164,7 +167,7 @@ export default function App() {
             <Route path="/countdown" element={<ExamCountdown />} />
             <Route path="/pomodoro" element={<Pomodoro />} />
             <Route path="/timetable" element={<Timetable />} />
-            <Route path="/settings" element={<Navigate to="/courses" replace />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

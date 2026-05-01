@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  ArrowLeft,
   BookOpen,
   CheckCircle2,
   ClipboardList,
@@ -29,6 +31,7 @@ const DEFAULT_COURSE_FORM = {
 };
 
 export default function CourseManagement({ onDataChange }) {
+  const navigate = useNavigate();
   const [courses, setCourses] = useState(() => db.getUserCourses());
   const [activeCourseId, setActiveCourseId] = useState(() => db.getUserCourses()[0]?.id || null);
   const [courseForm, setCourseForm] = useState(DEFAULT_COURSE_FORM);
@@ -155,10 +158,16 @@ export default function CourseManagement({ onDataChange }) {
             Choose templates, create custom courses, and keep the structure that powers your dashboard, tracker, and exams.
           </p>
         </div>
-        <span className="dashboard-chip w-fit">
-          <BookOpen className="h-3.5 w-3.5 text-accent-cyan" />
-          <span>{courses.length} active courses</span>
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary min-h-11 justify-center" onClick={() => navigate('/tracker')}>
+            <ArrowLeft className="h-4 w-4" />
+            Back to Tracker
+          </button>
+          <span className="dashboard-chip w-fit">
+            <BookOpen className="h-3.5 w-3.5 text-accent-cyan" />
+            <span>{courses.length} active courses</span>
+          </span>
+        </div>
       </header>
 
       <div className="course-creation-layout">
