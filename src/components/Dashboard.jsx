@@ -31,6 +31,7 @@ export default function Dashboard() {
   const topics = db.getTopics();
   const exams = db.getExams();
   const timetable = db.getTimetable();
+  const user = db.getUser();
 
   const nextMove = useMemo(() => getNextMove(topics, subjects, exams), [topics, subjects, exams]);
   const recallZone = useMemo(() => getRecallZone(topics, subjects, exams), [topics, subjects, exams]);
@@ -55,7 +56,7 @@ export default function Dashboard() {
         <div className="space-y-1">
           <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{dayName}, {dateStr}</p>
           <h1 className="text-2xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
-            {greeting}, Alex
+            {greeting}, {user.name || 'Student'}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">

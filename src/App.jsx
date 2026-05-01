@@ -5,6 +5,7 @@ import {
   BookOpen,
   Clock,
   CalendarDays,
+  LogOut,
   Timer,
   Moon,
   PanelLeftClose,
@@ -20,7 +21,10 @@ import CourseManagement from './components/CourseManagement.jsx';
 import Pomodoro from './components/Pomodoro.jsx';
 import Settings from './components/Settings.jsx';
 import TimetableNotificationScheduler from './components/TimetableNotificationScheduler.jsx';
+import AuthScreen from './components/AuthScreen.jsx';
+import Onboarding from './components/Onboarding.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -34,6 +38,7 @@ const NAV_ITEMS = [
 export default function App() {
   const location = useLocation();
   const { isDark, toggleTheme } = useTheme();
+  const { loading, isAuthenticated, onboardingComplete, signOut, user, setupError } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileHeaderVisible, setMobileHeaderVisible] = useState(true);
   const lastScrollYRef = useRef(0);
@@ -62,6 +67,18 @@ export default function App() {
     setMobileHeaderVisible(true);
     lastScrollYRef.current = window.scrollY || 0;
   }, [location.pathname]);
+
+  if (loading) {
+    return (
+      <div className="app-loading-screen">
+        <span className="app-loading-mark">FocusPoint</span>
+        <p>Loading your workspace...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <AuthScreen />;
+  if (!onboardingComplete) return <Onboarding />;
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--surface-primary)' }}>
@@ -109,7 +126,13 @@ export default function App() {
         </nav>
 
         {/* Bottom: theme toggle */}
-        <div className="px-2 py-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+        <div className="space-y-2 px-2 py-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+          {!sidebarCollapsed && (
+            <div className="sidebar-user-chip">
+              <strong>{user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'}</strong>
+              <span>{user?.email}</span>
+            </div>
+          )}
           <button
             id="theme-toggle-desktop"
             type="button"
@@ -128,6 +151,23 @@ export default function App() {
               </span>
             )}
           </button>
+          <button
+            type="button"
+            className={`theme-shortcut theme-shortcut--desktop w-full ${sidebarCollapsed ? 'is-collapsed' : ''}`}
+            title={sidebarCollapsed ? 'Sign out' : undefined}
+            aria-label="Sign out"
+            onClick={signOut}
+          >
+            <span className="theme-shortcut-icon" aria-hidden="true">
+              <LogOut className="w-4 h-4" />
+            </span>
+            {!sidebarCollapsed && (
+              <span className="theme-shortcut-copy">
+                <strong>Sign out</strong>
+                <small>Leave this device</small>
+              </span>
+            )}
+          </button>
         </div>
       </aside>
 
@@ -139,16 +179,27 @@ export default function App() {
         style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border-primary)' }}
       >
         <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>FocusPoint</span>
-        <button
-          type="button"
-          id="theme-toggle-mobile"
-          className="theme-shortcut theme-shortcut--mobile"
-          aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-          title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-          onClick={toggleTheme}
-        >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            id="theme-toggle-mobile"
+            className="theme-shortcut theme-shortcut--mobile"
+            aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+            title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+            onClick={toggleTheme}
+          >
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            className="theme-shortcut theme-shortcut--mobile"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={signOut}
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </header>
 
       {/* ===== Main Content ===== */}
@@ -160,6 +211,11 @@ export default function App() {
         }}
       >
         <div className="page-wrapper">
+          {setupError && (
+            <div className="supabase-setup-alert" role="alert">
+              Supabase setup needs attention: {setupError}
+            </div>
+          )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tracker" element={<LessonTracker />} />

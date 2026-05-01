@@ -989,6 +989,7 @@ function saveDB(db) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('focuspoint-db-change'));
+    scheduleRemoteSave();
   }
 }
 
@@ -1014,10 +1015,322 @@ function initDB(forceReset = false) {
   return migrated;
 }
 
+// ---------- Supabase Sync Adapter ----------
+
+let remoteSupabase = null;
+let remoteUser = null;
+let remoteSaveTimer = null;
+
+function getRemoteReady() {
+  return Boolean(remoteSupabase && remoteUser?.id);
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return null;
+  return String(value).slice(0, 16);
+}
+
+function toProfileUser(profile, authUser) {
+  return {
+    id: authUser?.id || profile?.id || 'user-1',
+    name: profile?.full_name || authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || '',
+    email: profile?.email || authUser?.email || '',
+    avatar: profile?.avatar_url || null,
+    level: profile?.academic_level || 'A-Level',
+    createdAt: authUser?.created_at || profile?.created_at || new Date().toISOString(),
+  };
+}
+
+function mapCourseRow(row, index) {
+  return normalizeUserCourse({
+    id: row.id,
+    templateId: row.template_id,
+    title: row.title,
+    curriculum: row.curriculum,
+    structureType: row.structure_type,
+    color: row.color,
+    weighting: row.weighting,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    sections: Array.isArray(row.sections) ? row.sections : [],
+  }, index);
+}
+
+function mapExamRow(row) {
+  return {
+    id: row.id,
+    subjectId: row.course_id,
+    paper: row.paper,
+    date: row.date,
+    color: row.color || '#6366f1',
+  };
+}
+
+function mapTimetableRow(row, subjects) {
+  return normalizeTimetableEntry({
+    id: row.id,
+    title: row.title,
+    subjectId: row.course_id,
+    subjectName: row.subject_name || undefined,
+    category: row.category,
+    start: toDateTimeLocal(row.starts_at),
+    end: toDateTimeLocal(row.ends_at),
+    isAllDay: row.is_all_day,
+    kind: row.kind,
+    completedDates: row.completed_dates,
+    linkedTopicId: row.linked_topic_id,
+    repeat: row.repeat,
+    repeatUntil: row.repeat_until,
+    notes: row.notes,
+    systemSeed: row.system_seed,
+    locked: row.locked,
+  }, subjects);
+}
+
+function mapResourceRow(row) {
+  return {
+    id: row.id,
+    topicId: row.topic_id,
+    courseId: row.course_id,
+    name: row.name,
+    type: row.type,
+    size: row.size || 0,
+    uploadedAt: row.uploaded_at || row.created_at || new Date().toISOString(),
+    storagePath: row.storage_path || null,
+    url: row.url || '#',
+  };
+}
+
+function createEmptyDataForUser(profile, authUser) {
+  const data = {
+    schemaVersion: DATA_SCHEMA_VERSION,
+    user: toProfileUser(profile, authUser),
+    settings: {
+      ...defaultSettings,
+      academicLevel: profile?.academic_level || defaultSettings.academicLevel,
+    },
+    userCourses: [],
+    subjects: [],
+    topics: [],
+    exams: [],
+    timetable: [],
+    resources: [],
+  };
+  syncCompatibilityTables(data);
+  return data;
+}
+
+function setDBForUser(data) {
+  syncCompatibilityTables(data);
+  saveDB(data);
+  return data;
+}
+
+function scheduleRemoteSave() {
+  if (!getRemoteReady()) return;
+  window.clearTimeout(remoteSaveTimer);
+  remoteSaveTimer = window.setTimeout(() => {
+    saveLocalToSupabase().catch((error) => {
+      console.error('FocusPoint Supabase sync failed:', error);
+    });
+  }, 350);
+}
+
+async function replaceOwnedRows(table, userId, rows) {
+  const deleteResult = await remoteSupabase.from(table).delete().eq('user_id', userId);
+  if (deleteResult.error) throw deleteResult.error;
+  if (rows.length === 0) return;
+  const insertResult = await remoteSupabase.from(table).insert(rows);
+  if (insertResult.error) throw insertResult.error;
+}
+
+function serializeTimetableEntry(entry, userId) {
+  return {
+    id: entry.id,
+    user_id: userId,
+    course_id: entry.subjectId || null,
+    subject_name: entry.subjectName || entry.subject || 'General',
+    title: entry.title || entry.label || 'Untitled Session',
+    category: normalizeCategory(entry.category || entry.type),
+    starts_at: parseDateSafe(entry.start)?.toISOString() || new Date().toISOString(),
+    ends_at: parseDateSafe(entry.end)?.toISOString() || new Date().toISOString(),
+    is_all_day: Boolean(entry.isAllDay),
+    kind: normalizeEventKind(entry.kind),
+    completed_dates: normalizeCompletedDates(entry.completedDates),
+    linked_topic_id: entry.linkedTopicId || null,
+    repeat: normalizeRepeat(entry.repeat),
+    repeat_until: entry.repeatUntil || null,
+    notes: String(entry.notes || ''),
+    system_seed: Boolean(entry.systemSeed),
+    locked: Boolean(entry.locked),
+  };
+}
+
+async function saveLocalToSupabase() {
+  if (!getRemoteReady()) return;
+  window.clearTimeout(remoteSaveTimer);
+  const data = getDB();
+  if (!data) return;
+  const userId = remoteUser.id;
+
+  const profileResult = await remoteSupabase.from('profiles').upsert({
+    id: userId,
+    email: data.user?.email || remoteUser.email || '',
+    full_name: data.user?.name || '',
+    avatar_url: data.user?.avatar || null,
+    academic_level: data.user?.level || data.settings?.academicLevel || 'A-Level',
+    onboarding_completed: Boolean(data.profile?.onboarding_completed || data.onboardingCompleted),
+    onboarding_answers: data.onboardingAnswers || {},
+    exam_session: data.onboardingAnswers?.examSession || null,
+    study_goal: data.onboardingAnswers?.studyGoal || null,
+    weekly_study_hours: Number(data.onboardingAnswers?.weeklyStudyHours) || null,
+    updated_at: new Date().toISOString(),
+  });
+  if (profileResult.error) throw profileResult.error;
+
+  const settingsResult = await remoteSupabase.from('user_settings').upsert({
+    user_id: userId,
+    academic_level: data.settings?.academicLevel || data.user?.level || 'A-Level',
+    exam_sittings: data.settings?.examSittings || {},
+    preferences: data.settings?.preferences || {},
+    updated_at: new Date().toISOString(),
+  });
+  if (settingsResult.error) throw settingsResult.error;
+
+  await replaceOwnedRows('study_courses', userId, (data.userCourses || []).map((course) => ({
+    id: course.id,
+    user_id: userId,
+    template_id: course.templateId || null,
+    title: course.title,
+    curriculum: course.curriculum,
+    structure_type: course.structureType,
+    color: course.color,
+    weighting: Number(course.weighting) || 1,
+    sections: course.sections || [],
+    created_at: course.createdAt || new Date().toISOString(),
+    updated_at: course.updatedAt || new Date().toISOString(),
+  })));
+
+  await replaceOwnedRows('exams', userId, (data.exams || []).map((exam) => ({
+    id: exam.id,
+    user_id: userId,
+    course_id: exam.subjectId || null,
+    paper: exam.paper,
+    date: exam.date,
+    color: exam.color || '#6366f1',
+  })));
+
+  await replaceOwnedRows('timetable_entries', userId, (data.timetable || []).map((entry) => (
+    serializeTimetableEntry(entry, userId)
+  )));
+
+  await replaceOwnedRows('resources', userId, (data.resources || []).map((resource) => ({
+    id: resource.id,
+    user_id: userId,
+    course_id: resource.courseId || null,
+    topic_id: resource.topicId || null,
+    name: resource.name,
+    type: resource.type || 'other',
+    size: Number(resource.size) || 0,
+    uploaded_at: resource.uploadedAt || new Date().toISOString(),
+    storage_path: resource.storagePath || null,
+    url: resource.url || '#',
+  })));
+}
+
+async function hydrateFromSupabase() {
+  if (!getRemoteReady()) return initDB();
+  const userId = remoteUser.id;
+
+  const [
+    profileResult,
+    settingsResult,
+    coursesResult,
+    examsResult,
+    timetableResult,
+    resourcesResult,
+  ] = await Promise.all([
+    remoteSupabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+    remoteSupabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
+    remoteSupabase.from('study_courses').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+    remoteSupabase.from('exams').select('*').eq('user_id', userId),
+    remoteSupabase.from('timetable_entries').select('*').eq('user_id', userId),
+    remoteSupabase.from('resources').select('*').eq('user_id', userId),
+  ]);
+
+  const setupErrors = [profileResult, settingsResult, coursesResult, examsResult, timetableResult, resourcesResult]
+    .map((result) => result.error)
+    .filter(Boolean);
+  if (setupErrors.length > 0) throw setupErrors[0];
+
+  const profile = profileResult.data;
+  const settings = settingsResult.data;
+  const courses = (coursesResult.data || []).map(mapCourseRow);
+  const subjects = projectCoursesToSubjects(courses);
+  const data = {
+    schemaVersion: DATA_SCHEMA_VERSION,
+    user: toProfileUser(profile, remoteUser),
+    settings: {
+      ...defaultSettings,
+      academicLevel: settings?.academic_level || profile?.academic_level || defaultSettings.academicLevel,
+      examSittings: {
+        ...defaultSettings.examSittings,
+        ...(settings?.exam_sittings || {}),
+      },
+      preferences: {
+        ...defaultSettings.preferences,
+        ...(settings?.preferences || {}),
+      },
+    },
+    profile: profile || null,
+    onboardingCompleted: Boolean(profile?.onboarding_completed),
+    onboardingAnswers: profile?.onboarding_answers || {},
+    userCourses: courses,
+    subjects,
+    topics: flattenUserCourses(courses),
+    exams: (examsResult.data || []).map(mapExamRow),
+    timetable: (timetableResult.data || []).map((row) => mapTimetableRow(row, subjects)),
+    resources: (resourcesResult.data || []).map(mapResourceRow),
+  };
+
+  return setDBForUser(data);
+}
+
 // ---------- CRUD API (simulates Supabase client) ----------
 
 export const db = {
   init: (forceReset) => initDB(forceReset),
+  connectSupabase: ({ supabase, user }) => {
+    remoteSupabase = supabase;
+    remoteUser = user;
+  },
+  disconnectSupabase: () => {
+    remoteSupabase = null;
+    remoteUser = null;
+    window.clearTimeout(remoteSaveTimer);
+  },
+  hydrateFromSupabase,
+  saveLocalToSupabase,
+  createEmptyWorkspace: (profile, authUser) => setDBForUser(createEmptyDataForUser(profile, authUser || remoteUser)),
+  markOnboardingComplete: (answers = {}) => {
+    const data = getDB() || createEmptyDataForUser(null, remoteUser);
+    data.onboardingCompleted = true;
+    data.onboardingAnswers = answers;
+    data.profile = {
+      ...(data.profile || {}),
+      onboarding_completed: true,
+      onboarding_answers: answers,
+      academic_level: answers.academicLevel || data.settings?.academicLevel || 'A-Level',
+      exam_session: answers.examSession || null,
+      study_goal: answers.studyGoal || null,
+      weekly_study_hours: Number(answers.weeklyStudyHours) || null,
+    };
+    saveDB(data);
+    return data;
+  },
+  isOnboardingComplete: () => Boolean(getDB()?.onboardingCompleted || getDB()?.profile?.onboarding_completed),
+  getProfile: () => getDB()?.profile || null,
+  getOnboardingAnswers: () => getDB()?.onboardingAnswers || {},
 
   // --- User ---
   getUser: () => getDB()?.user || defaultUser,
