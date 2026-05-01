@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../lib/supabaseClient.js';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { db } from '../data/mockDatabase.js';
 
 const AuthContext = createContext(null);
@@ -62,6 +62,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [setupError, setSetupError] = useState('');
 
+  // When env vars are missing, supabase is null — we handle this gracefully.
+  const supabaseMissing = !isSupabaseConfigured;
+
   const loadWorkspace = useCallback(async (nextSession) => {
     setSession(nextSession);
     setUser(nextSession?.user || null);
@@ -89,6 +92,15 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // If Supabase is not configured, stop loading and show a clear error.
+    if (supabaseMissing) {
+      setSetupError(
+        'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to your environment variables.'
+      );
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     supabase.auth.getSession().then(({ data, error }) => {
@@ -111,9 +123,10 @@ export function AuthProvider({ children }) {
       isMounted = false;
       subscriptionData.subscription.unsubscribe();
     };
-  }, [loadWorkspace]);
+  }, [loadWorkspace, supabaseMissing]);
 
   const signUp = useCallback(async ({ name, email, password }) => {
+    if (supabaseMissing) throw new Error('Supabase is not configured.');
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -124,19 +137,21 @@ export function AuthProvider({ children }) {
     });
     if (error) throw error;
     return data;
-  }, []);
+  }, [supabaseMissing]);
 
   const signIn = useCallback(async ({ email, password }) => {
+    if (supabaseMissing) throw new Error('Supabase is not configured.');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
-  }, []);
+  }, [supabaseMissing]);
 
   const signOut = useCallback(async () => {
+    if (supabaseMissing) return;
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     db.disconnectSupabase();
-  }, []);
+  }, [supabaseMissing]);
 
   const completeOnboarding = useCallback(async (answers) => {
     const currentUser = db.updateUser({

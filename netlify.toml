@@ -1,6 +1,22 @@
+# FocusPoint — Netlify Configuration
+#
+# REQUIRED: Set these environment variables in Netlify Dashboard
+# (Site → Environment variables), NOT in this file:
+#
+#   VITE_SUPABASE_URL           — Your Supabase project URL
+#   VITE_SUPABASE_PUBLISHABLE_KEY — Your Supabase anon/public key
+#
+# These are injected at build time by Vite and never stored in Git.
+
 [build]
   command = "npm run build"
   publish = "dist"
+
+# SPA fallback — send all unmatched routes to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 
 [[headers]]
   for = "/sw.js"
