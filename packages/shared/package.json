@@ -1,0 +1,14 @@
+{
+  "name": "@focuspoint/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./curriculum/curriculumData": "./src/curriculum/curriculumData.js",
+    "./priority/priorityEngine": "./src/priority/priorityEngine.js",
+    "./study-data/mockDatabase": "./src/study-data/mockDatabase.js"
+  },
+  "dependencies": {
+    "uuid": "^14.0.0"
+  }
+}

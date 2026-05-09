@@ -1,0 +1,2 @@
+-- FocusPoint Supabase seed placeholder.
+-- Add local development seed data here when schema migrations are introduced.
