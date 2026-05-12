@@ -19,12 +19,22 @@ function nextWeekdayDate(dayOffset = 1) {
   return date;
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
 function formatDate(date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 function formatDateTime(date) {
-  return date.toISOString().slice(0, 16);
+  return `${formatDate(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function hasMatchingCachedWorkspace(authUser) {
+  if (!authUser || !db.isOnboardingComplete()) return false;
+  const cachedUser = db.getUser();
+  return cachedUser?.id === authUser.id || Boolean(authUser.email && cachedUser?.email === authUser.email);
 }
 
 function seedWeeklyStudyBlock(course, answers) {
@@ -60,6 +70,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [syncingWorkspace, setSyncingWorkspace] = useState(false);
   const [setupError, setSetupError] = useState('');
 
   // When env vars are missing, supabase is null — we handle this gracefully.
@@ -74,20 +85,36 @@ export function AuthProvider({ children }) {
       db.disconnectSupabase();
       setProfile(null);
       setLoading(false);
+      setSyncingWorkspace(false);
       return;
     }
 
     db.connectSupabase({ supabase, user: nextSession.user });
+    const hasCache = hasMatchingCachedWorkspace(nextSession.user);
+    const cachedProfile = db.getProfile();
+    if (hasCache) {
+      setProfile(cachedProfile || { onboarding_completed: true });
+      setLoading(false);
+      setSyncingWorkspace(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const data = await db.hydrateFromSupabase();
       setProfile(data.profile || db.getProfile());
     } catch (error) {
       console.error('Supabase workspace load failed:', error);
       setSetupError(error.message || 'Supabase workspace is not ready yet.');
-      db.createEmptyWorkspace(null, nextSession.user);
-      setProfile(db.getProfile());
+      if (hasCache) {
+        setProfile(cachedProfile || db.getProfile());
+      } else {
+        db.createEmptyWorkspace(null, nextSession.user);
+        setProfile(db.getProfile());
+      }
     } finally {
       setLoading(false);
+      setSyncingWorkspace(false);
     }
   }, []);
 
@@ -220,6 +247,7 @@ export function AuthProvider({ children }) {
     user,
     profile,
     loading,
+    syncingWorkspace,
     setupError,
     isAuthenticated: Boolean(session?.user),
     onboardingComplete: Boolean(profile?.onboarding_completed || db.isOnboardingComplete()),
@@ -228,7 +256,7 @@ export function AuthProvider({ children }) {
     signOut,
     completeOnboarding,
     refreshWorkspace: () => loadWorkspace(session),
-  }), [completeOnboarding, loadWorkspace, loading, profile, session, setupError, signIn, signOut, signUp, user]);
+  }), [completeOnboarding, loadWorkspace, loading, profile, session, setupError, signIn, signOut, signUp, syncingWorkspace, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

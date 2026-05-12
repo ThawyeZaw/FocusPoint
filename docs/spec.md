@@ -135,6 +135,8 @@ Exam Countdown manages exam papers. It reads subjects and exams from `db`, calcu
 
 Writes go through `db.addExam()` and `db.deleteExam()`.
 
+Every exam is linked into the timetable by the shared data facade as an all-day `exam` event. The exam record is the source of truth; generated timetable entries update when an exam date/paper changes and are removed when the exam is deleted.
+
 ### `Timetable.jsx`
 
 Timetable is a self-contained scheduling module with its own context provider. It supports:
@@ -148,6 +150,8 @@ Timetable is a self-contained scheduling module with its own context provider. I
 - Zoom controls saved to localStorage.
 - Event create, edit, and delete modal.
 - Searchable/custom event type field.
+- Linked all-day exam entries generated from Exam Countdown.
+- A global timetable timezone preference, defaulting to `Asia/Yangon`.
 
 The timetable normalizes database entries into UI events and converts UI events back to database payloads.
 
@@ -237,6 +241,8 @@ type Settings = {
   preferences: {
     rowMethod: boolean;
     focusMethod: boolean;
+    accentColor: string;
+    timeZone: string;        // IANA timezone, defaults to Asia/Yangon
   };
 };
 ```
@@ -346,6 +352,7 @@ type TimetableEntry = {
   kind: "event" | "todo";
   completedDates: string[];
   linkedTopicId: string | null;
+  linkedExamId: string | null;
   repeat: "none" | "daily" | "weekly" | "monthly";
   repeatUntil: string | null;
   notes: string;
@@ -420,6 +427,8 @@ The exported `db` facade includes these CRUD groups:
 Migration behavior:
 
 - Timetable entries are normalized to the current event shape.
+- Exam records generate linked all-day timetable entries.
+- Timetable wall-clock dates/times are preserved through the configured timezone.
 - Topic status and confidence are synchronized.
 - Default school timetable seeds are inserted when missing.
 - Legacy subjects/topics are converted into `userCourses`.

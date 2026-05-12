@@ -159,7 +159,8 @@
 
 .auth-error,
 .auth-status,
-.supabase-setup-alert {
+.supabase-setup-alert,
+.supabase-sync-alert {
   margin: 0;
   border-radius: 8px;
   padding: 10px 12px;
@@ -178,6 +179,12 @@
   color: #047857;
   background: rgba(16, 185, 129, 0.12);
   border: 1px solid rgba(16, 185, 129, 0.22);
+}
+
+.supabase-sync-alert {
+  color: #0e7490;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.22);
 }
 
 .auth-submit,

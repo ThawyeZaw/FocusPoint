@@ -3,6 +3,7 @@ import {
   Bell,
   Check,
   ExternalLink,
+  Globe2,
   GraduationCap,
   LogOut,
   Mail,
@@ -16,10 +17,40 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../shared/context/ThemeContext.jsx';
 import { useAuth } from '../../shared/context/AuthContext.jsx';
-import { db } from '@focuspoint/shared/study-data/mockDatabase';
+import { DEFAULT_TIME_ZONE, db } from '@focuspoint/shared/study-data/mockDatabase';
 import { getNotificationPermission, requestNotificationPermission } from '../../shared/utils/notifications.js';
 
 const TELEGRAM_URL = 'https://t.me/Ko_Thorin';
+const FALLBACK_TIME_ZONES = [
+  'Asia/Yangon',
+  'Asia/Bangkok',
+  'Asia/Singapore',
+  'Asia/Kolkata',
+  'Asia/Tokyo',
+  'Europe/London',
+  'America/New_York',
+  'America/Los_Angeles',
+  'UTC',
+];
+
+function getTimeZoneOptions(currentTimeZone) {
+  const supported = typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : FALLBACK_TIME_ZONES;
+  return Array.from(new Set([DEFAULT_TIME_ZONE, currentTimeZone, ...supported].filter(Boolean))).sort();
+}
+
+function getTimeZoneLabel(timeZone) {
+  try {
+    const offset = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value;
+    return offset ? `${timeZone} (${offset})` : timeZone;
+  } catch {
+    return timeZone;
+  }
+}
 
 export default function Settings({ onDataChange }) {
   const { isDark, toggleTheme, accentColor, setAccentColor, accentOptions } = useTheme();
@@ -34,6 +65,8 @@ export default function Settings({ onDataChange }) {
     () => accentOptions.find((option) => option.color === accentColor) || accentOptions[0],
     [accentColor, accentOptions]
   );
+  const selectedTimeZone = settings.preferences?.timeZone || DEFAULT_TIME_ZONE;
+  const timeZoneOptions = useMemo(() => getTimeZoneOptions(selectedTimeZone), [selectedTimeZone]);
 
   useEffect(() => {
     const storedAccent = settings.preferences?.accentColor;
@@ -71,6 +104,15 @@ export default function Settings({ onDataChange }) {
       preferences: {
         ...settings.preferences,
         accentColor: color,
+      },
+    });
+  };
+
+  const chooseTimeZone = (timeZone) => {
+    persistSettings({
+      preferences: {
+        ...settings.preferences,
+        timeZone,
       },
     });
   };
@@ -190,6 +232,28 @@ export default function Settings({ onDataChange }) {
               })}
             </div>
           </div>
+          <label className="settings-accent-panel">
+            <div className="min-w-0">
+              <p className="settings-field-label">Timetable timezone</p>
+              <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Current: {getTimeZoneLabel(selectedTimeZone)}
+              </p>
+            </div>
+            <div className="relative w-full sm:max-w-xs">
+              <Globe2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+              <select
+                className="select-field pl-9"
+                value={selectedTimeZone}
+                onChange={(event) => chooseTimeZone(event.target.value)}
+              >
+                {timeZoneOptions.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>
+                    {getTimeZoneLabel(timeZone)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
         </div>
       </section>
 

@@ -12,6 +12,12 @@ import {
 import { db } from '@focuspoint/shared/study-data/mockDatabase';
 import { daysUntil } from '@focuspoint/shared/priority/priorityEngine';
 
+function parseExamDate(value) {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
 export default function ExamCountdown({ onDataChange }) {
   const subjects = db.getSubjects();
   const [exams, setExams] = useState(() => db.getExams());
@@ -28,12 +34,12 @@ export default function ExamCountdown({ onDataChange }) {
           subjectColor: subject?.color || '#6366f1',
           daysLeft,
           urgencyLevel: daysLeft <= 7 ? 'critical' : daysLeft <= 14 ? 'warning' : 'normal',
-          dateFormatted: new Date(exam.date).toLocaleDateString('en-US', {
+          dateFormatted: parseExamDate(exam.date)?.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
             day: 'numeric',
             year: 'numeric',
-          }),
+          }) || exam.date,
         };
       })
       .sort((a, b) => a.daysLeft - b.daysLeft);

@@ -37,7 +37,7 @@ const NAV_ITEMS = [
 export default function App() {
   const location = useLocation();
   const { isDark, toggleTheme } = useTheme();
-  const { loading, isAuthenticated, onboardingComplete, user, setupError } = useAuth();
+  const { loading, syncingWorkspace, isAuthenticated, onboardingComplete, user, setupError } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileHeaderVisible, setMobileHeaderVisible] = useState(true);
   const lastScrollYRef = useRef(0);
@@ -71,7 +71,7 @@ export default function App() {
     return (
       <div className="app-loading-screen">
         <span className="app-loading-mark">FocusPoint</span>
-        <p>Loading your workspace...</p>
+        <p>Checking your workspace...</p>
       </div>
     );
   }
@@ -187,6 +187,11 @@ export default function App() {
           {setupError && (
             <div className="supabase-setup-alert" role="alert">
               Supabase setup needs attention: {setupError}
+            </div>
+          )}
+          {syncingWorkspace && !setupError && (
+            <div className="supabase-sync-alert" role="status">
+              Syncing latest workspace...
             </div>
           )}
           <Routes>

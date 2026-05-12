@@ -40,7 +40,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { db } from '@focuspoint/shared/study-data/mockDatabase';
+import {
+  db,
+  getConfiguredTimeZone,
+  getCurrentDateInTimeZone,
+  getNowMinutesInTimeZone,
+  getTodayInTimeZone,
+} from '@focuspoint/shared/study-data/mockDatabase';
 
 const TimetableContext = createContext(null);
 
@@ -149,7 +155,7 @@ function addMinutesToTime(time, minutesToAdd) {
 function getEventDate(event) {
   if (event.date) return event.date;
   if (event.start) return event.start.slice(0, 10);
-  return formatDateOnly(new Date());
+  return getTodayInTimeZone();
 }
 
 function toTimetableEvent(raw) {
@@ -205,6 +211,7 @@ function toDatabasePayload(event) {
     recurrenceEndDate: repeat === 'none' ? null : event.recurrenceEndDate,
     repeat,
     repeatUntil: repeat === 'none' ? null : event.recurrenceEndDate,
+    linkedExamId: event.linkedExamId || null,
   };
 }
 
@@ -418,10 +425,17 @@ export default function Timetable({ onDataChange }) {
 function TimetableScreen() {
   const { events, createEvent, updateEvent, deleteEvent, toggleTodoOccurrence } = useTimetableStore();
   const [view, setView] = useState('weekly');
-  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()));
+  const [timeZone, setTimeZone] = useState(() => getConfiguredTimeZone());
+  const [anchorDate, setAnchorDate] = useState(() => startOfDay(getCurrentDateInTimeZone()));
   const [modal, setModal] = useState({ open: false, mode: 'create', event: null });
   const [zoom, setZoom] = useState(getInitialZoom);
   const [dailyMode, setDailyMode] = useState('timeline');
+
+  useEffect(() => {
+    const refreshTimeZone = () => setTimeZone(getConfiguredTimeZone());
+    window.addEventListener('focuspoint-db-change', refreshTimeZone);
+    return () => window.removeEventListener('focuspoint-db-change', refreshTimeZone);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(ZOOM_STORAGE_KEY, String(zoom));
@@ -457,18 +471,19 @@ function TimetableScreen() {
     [events, range.end, range.start],
   );
 
+  const todayDate = useMemo(() => startOfDay(getCurrentDateInTimeZone(timeZone)), [timeZone]);
+
   const todayOccurrences = useMemo(
-    () => getEventsForRange(startOfDay(new Date()), endOfDay(new Date()), events),
-    [events],
+    () => getEventsForRange(todayDate, endOfDay(todayDate), events),
+    [events, todayDate],
   );
 
   const nextTodayEvent = useMemo(() => {
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const nowMinutes = getNowMinutesInTimeZone(timeZone);
     return todayOccurrences
       .filter((event) => event.isAllDay || (timeToMinutes(event.startTime) ?? 0) >= nowMinutes)
       .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))[0] || null;
-  }, [todayOccurrences]);
+  }, [timeZone, todayOccurrences]);
 
   const typeOptions = useMemo(() => {
     const set = new Set(TYPE_SUGGESTIONS);
@@ -577,7 +592,7 @@ function TimetableScreen() {
           <button className="btn-secondary touch-target" onClick={movePrevious} aria-label="Previous">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button className="btn-secondary touch-target today-button" onClick={() => setAnchorDate(startOfDay(new Date()))}>
+          <button className="btn-secondary touch-target today-button" onClick={() => setAnchorDate(todayDate)}>
             Today
           </button>
           <button className="btn-secondary touch-target" onClick={moveNext} aria-label="Next">
@@ -615,6 +630,7 @@ function TimetableScreen() {
           events={occurrences}
           pixelsPerMinute={zoom}
           mode={dailyMode}
+          todayDate={todayDate}
           onSlotClick={openCreateModal}
           onEventClick={openEditModal}
           onToggleTodo={toggleTodoOccurrence}
@@ -625,6 +641,7 @@ function TimetableScreen() {
           weekStart={range.start}
           events={occurrences}
           pixelsPerMinute={zoom}
+          todayDate={todayDate}
           onSlotClick={openCreateModal}
           onEventClick={openEditModal}
           onToggleTodo={toggleTodoOccurrence}
@@ -637,6 +654,7 @@ function TimetableScreen() {
           monthEnd={range.end}
           events={occurrences}
           zoom={zoom}
+          todayDate={todayDate}
           onDayClick={openCreateModal}
           onEventClick={openEditModal}
           onToggleTodo={toggleTodoOccurrence}
@@ -707,7 +725,7 @@ function EventLegend() {
   );
 }
 
-function DailyView({ date, events, pixelsPerMinute, mode, onSlotClick, onEventClick, onToggleTodo }) {
+function DailyView({ date, events, pixelsPerMinute, mode, todayDate, onSlotClick, onEventClick, onToggleTodo }) {
   return (
     <section className="timetable-panel">
       {mode === 'list' ? (
@@ -722,6 +740,7 @@ function DailyView({ date, events, pixelsPerMinute, mode, onSlotClick, onEventCl
             onSlotClick={onSlotClick}
             onEventClick={onEventClick}
             onToggleTodo={onToggleTodo}
+            todayDate={todayDate}
             compactHeaders={false}
           />
         </>
@@ -730,7 +749,7 @@ function DailyView({ date, events, pixelsPerMinute, mode, onSlotClick, onEventCl
   );
 }
 
-function WeeklyView({ weekStart, events, pixelsPerMinute, onSlotClick, onEventClick, onToggleTodo }) {
+function WeeklyView({ weekStart, events, pixelsPerMinute, todayDate, onSlotClick, onEventClick, onToggleTodo }) {
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   return (
     <section className="timetable-panel">
@@ -742,6 +761,7 @@ function WeeklyView({ weekStart, events, pixelsPerMinute, onSlotClick, onEventCl
         onSlotClick={onSlotClick}
         onEventClick={onEventClick}
         onToggleTodo={onToggleTodo}
+        todayDate={todayDate}
         compactHeaders
       />
     </section>
@@ -791,7 +811,7 @@ function DayAllDayStrip({ date, events, onEventClick, onEmptyClick, onToggleTodo
   );
 }
 
-function TimeGrid({ days, events, pixelsPerMinute, onSlotClick, onEventClick, onToggleTodo, compactHeaders }) {
+function TimeGrid({ days, events, pixelsPerMinute, onSlotClick, onEventClick, onToggleTodo, todayDate, compactHeaders }) {
   const marks = useMemo(buildTimeMarks, []);
   const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
   const timelineHeight = (DISPLAY_END_HOUR - DISPLAY_START_HOUR) * 60 * pixelsPerMinute;
@@ -810,7 +830,7 @@ function TimeGrid({ days, events, pixelsPerMinute, onSlotClick, onEventClick, on
         <div className="time-gutter" />
         <div className="time-grid-days" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
           {days.map((day) => (
-            <div key={formatDateOnly(day)} className={`time-day-header ${isSameDay(day, new Date()) ? 'today' : ''}`}>
+            <div key={formatDateOnly(day)} className={`time-day-header ${isSameDay(day, todayDate) ? 'today' : ''}`}>
               <span className="day-full">{format(day, 'EEE')}</span>
               <span className="day-compact">{compactHeaders ? format(day, 'EEEEE') : format(day, 'EEE')}</span>
               <strong>{format(day, 'd')}</strong>
@@ -943,7 +963,7 @@ function DailyListView({ events, onEventClick, onToggleTodo }) {
   );
 }
 
-function MonthlyView({ anchorDate, monthStart, monthEnd, events, zoom, onDayClick, onEventClick, onToggleTodo }) {
+function MonthlyView({ anchorDate, monthStart, monthEnd, events, zoom, todayDate, onDayClick, onEventClick, onToggleTodo }) {
   const cells = useMemo(() => {
     const result = [];
     for (let cursor = monthStart; cursor <= monthEnd; cursor = addDays(cursor, 1)) result.push(cursor);
@@ -983,7 +1003,7 @@ function MonthlyView({ anchorDate, monthStart, monthEnd, events, zoom, onDayClic
                 }
               }}
             >
-              <span className={`month-day-number ${isSameDay(day, new Date()) ? 'today' : ''}`}>{format(day, 'd')}</span>
+              <span className={`month-day-number ${isSameDay(day, todayDate) ? 'today' : ''}`}>{format(day, 'd')}</span>
               <div className="month-cell-events">
                 {visible.map((event) => (
                   <EventChip

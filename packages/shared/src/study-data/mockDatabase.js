@@ -7,6 +7,7 @@ import { getCurriculumTemplate } from '../curriculum/curriculumData.js';
 const STORAGE_KEY = 'focuspoint_db';
 const DATA_SCHEMA_VERSION = 3;
 const STUDY_DEFAULTS_SCHEMA_VERSION = 2;
+export const DEFAULT_TIME_ZONE = 'Asia/Yangon';
 
 // ---------- Topic Progress Mapping ----------
 const STATUS_OPTIONS = [
@@ -105,6 +106,7 @@ const defaultSettings = {
     rowMethod: true,
     focusMethod: true,
     accentColor: '#6366f1',
+    timeZone: DEFAULT_TIME_ZONE,
   },
 };
 
@@ -342,6 +344,7 @@ const defaultTopics = [
 const defaultTimetable = [];
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const EXAM_TIMETABLE_ID_PREFIX = 'exam-timetable-';
 const DAY_TO_INDEX = DAY_NAMES.reduce((acc, day, index) => {
   acc[day.toLowerCase()] = index;
   return acc;
@@ -351,12 +354,149 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
+function parseLocalDateTimeParts(value) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return {
+      year: value.getFullYear(),
+      month: value.getMonth() + 1,
+      day: value.getDate(),
+      hours: value.getHours(),
+      minutes: value.getMinutes(),
+      seconds: value.getSeconds(),
+    };
+  }
+
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+  const [, year, month, day, hours = '00', minutes = '00', seconds = '00'] = match;
+  return {
+    year: Number(year),
+    month: Number(month),
+    day: Number(day),
+    hours: Number(hours),
+    minutes: Number(minutes),
+    seconds: Number(seconds),
+  };
+}
+
 function formatDateOnly(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 function formatTimeOnly(date) {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function formatDateOnlyFromParts(parts) {
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
+}
+
+function formatTimeOnlyFromParts(parts) {
+  return `${pad2(parts.hours)}:${pad2(parts.minutes)}`;
+}
+
+function normalizeTimeZone(value) {
+  const timeZone = String(value || '').trim() || DEFAULT_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
+}
+
+function getSettingsTimeZone(settings) {
+  return normalizeTimeZone(settings?.preferences?.timeZone);
+}
+
+export function getConfiguredTimeZone() {
+  return getSettingsTimeZone(getDB()?.settings);
+}
+
+const timeZoneFormatterCache = new Map();
+
+function getTimeZoneFormatter(timeZone) {
+  const normalized = normalizeTimeZone(timeZone);
+  if (!timeZoneFormatterCache.has(normalized)) {
+    timeZoneFormatterCache.set(normalized, new Intl.DateTimeFormat('en-US', {
+      timeZone: normalized,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }));
+  }
+  return timeZoneFormatterCache.get(normalized);
+}
+
+export function getDateTimePartsInTimeZone(date = new Date(), timeZone = getConfiguredTimeZone()) {
+  const parts = Object.fromEntries(
+    getTimeZoneFormatter(timeZone)
+      .formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, Number(part.value)])
+  );
+
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hours: parts.hour,
+    minutes: parts.minute,
+    seconds: parts.second,
+  };
+}
+
+export function getTodayInTimeZone(timeZone = getConfiguredTimeZone()) {
+  return formatDateOnlyFromParts(getDateTimePartsInTimeZone(new Date(), timeZone));
+}
+
+export function getCurrentDateInTimeZone(timeZone = getConfiguredTimeZone()) {
+  const parts = getDateTimePartsInTimeZone(new Date(), timeZone);
+  return new Date(parts.year, parts.month - 1, parts.day);
+}
+
+export function getNowMinutesInTimeZone(timeZone = getConfiguredTimeZone()) {
+  const parts = getDateTimePartsInTimeZone(new Date(), timeZone);
+  return parts.hours * 60 + parts.minutes;
+}
+
+function getTimeZoneOffsetMs(date, timeZone) {
+  const parts = getDateTimePartsInTimeZone(date, timeZone);
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hours, parts.minutes, parts.seconds) - date.getTime();
+}
+
+export function zonedWallTimeToDate(date, time = '00:00', timeZone = getConfiguredTimeZone()) {
+  const dateParts = parseLocalDateTimeParts(date);
+  const [hours = 0, minutes = 0] = String(time || '00:00').split(':').map(Number);
+  if (!dateParts || !Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+  const wallUtc = Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, hours, minutes, 0);
+  let utc = wallUtc;
+  for (let i = 0; i < 3; i += 1) {
+    const nextUtc = wallUtc - getTimeZoneOffsetMs(new Date(utc), timeZone);
+    if (Math.abs(nextUtc - utc) < 1) break;
+    utc = nextUtc;
+  }
+  return new Date(utc);
+}
+
+function zonedWallTimeToISOString(date, time, timeZone) {
+  return zonedWallTimeToDate(date, time, timeZone)?.toISOString() || new Date().toISOString();
+}
+
+function instantToLocalDateTime(value, timeZone) {
+  if (!value) return null;
+  const text = String(value);
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)) return text.slice(0, 16);
+  const instant = new Date(text);
+  if (Number.isNaN(instant.getTime())) return null;
+  const parts = getDateTimePartsInTimeZone(instant, timeZone);
+  return `${formatDateOnlyFromParts(parts)}T${formatTimeOnlyFromParts(parts)}`;
 }
 
 function normalizeTime(value, fallback = '09:00') {
@@ -411,6 +551,12 @@ function toLegacyType(category) {
 }
 
 function parseDateSafe(value) {
+  const parts = parseLocalDateTimeParts(value);
+  if (parts) {
+    const d = new Date(parts.year, parts.month - 1, parts.day, parts.hours, parts.minutes, parts.seconds || 0);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -525,6 +671,7 @@ function normalizeTimetableEntry(entry, subjects) {
     kind: normalizeEventKind(source.kind),
     completedDates: normalizeCompletedDates(source.completedDates),
     linkedTopicId: source.linkedTopicId || null,
+    linkedExamId: source.linkedExamId || null,
     repeat,
     repeatUntil: repeat === 'none' ? null : normalizeRepeatUntil(repeatUntilSource, defaultRepeatUntil),
     isRecurring: repeat !== 'none',
@@ -572,8 +719,7 @@ function buildSchoolSeed(subject, dayName, id) {
 }
 
 function buildMechanicsTodaySeed(subject) {
-  const now = new Date();
-  const day = formatDateOnly(now);
+  const day = getTodayInTimeZone();
   return withLegacyFields({
     id: 'seed-mechanics-today',
     title: 'Mechanics P3 Practice',
@@ -619,6 +765,74 @@ function ensureTimetableSeeds(data) {
     ids.add(seed.id);
     signatures.add(eventSignature(seed));
   });
+}
+
+function getExamTimetableId(examId) {
+  return `${EXAM_TIMETABLE_ID_PREFIX}${examId}`;
+}
+
+function getLinkedExamId(entry) {
+  if (entry?.linkedExamId) return entry.linkedExamId;
+  const id = String(entry?.id || '');
+  return id.startsWith(EXAM_TIMETABLE_ID_PREFIX) ? id.slice(EXAM_TIMETABLE_ID_PREFIX.length) : null;
+}
+
+function buildExamTimetableEntry(exam, subjects) {
+  const subject = subjects.find((item) => item.id === exam.subjectId);
+  const parsedDate = parseDateSafe(exam.date);
+  const date = parsedDate ? formatDateOnly(parsedDate) : getTodayInTimeZone();
+  const subjectName = subject?.name || exam.subjectName || 'Exam';
+  const title = `${subjectName}: ${String(exam.paper || 'Exam').trim() || 'Exam'}`;
+
+  return withLegacyFields({
+    id: getExamTimetableId(exam.id),
+    title,
+    subjectId: exam.subjectId || null,
+    subjectName,
+    category: 'exam',
+    date,
+    start: `${date}T00:00`,
+    end: `${date}T23:59`,
+    isAllDay: true,
+    kind: 'event',
+    completedDates: [],
+    linkedTopicId: null,
+    linkedExamId: exam.id,
+    repeat: 'none',
+    repeatUntil: null,
+    notes: 'Linked from Exam Countdown.',
+    systemSeed: true,
+    locked: true,
+  });
+}
+
+function syncExamTimetableEntries(data) {
+  if (!data || typeof data !== 'object') return data;
+  if (!Array.isArray(data.exams)) data.exams = [];
+  if (!Array.isArray(data.timetable)) data.timetable = [];
+  const subjects = Array.isArray(data.subjects) ? data.subjects : [];
+  const examIds = new Set(data.exams.map((exam) => exam.id).filter(Boolean));
+
+  data.timetable = data.timetable.filter((entry) => {
+    const linkedExamId = getLinkedExamId(entry);
+    return !linkedExamId || examIds.has(linkedExamId);
+  });
+
+  data.exams.forEach((exam) => {
+    if (!exam?.id || !exam.date) return;
+    const linkedEntry = buildExamTimetableEntry(exam, subjects);
+    const index = data.timetable.findIndex((entry) => getLinkedExamId(entry) === exam.id || entry.id === linkedEntry.id);
+    if (index > -1) {
+      data.timetable[index] = {
+        ...linkedEntry,
+        completedDates: normalizeCompletedDates(data.timetable[index].completedDates),
+      };
+    } else {
+      data.timetable.push(linkedEntry);
+    }
+  });
+
+  return data;
 }
 
 function migrateTimetable(data) {
@@ -688,10 +902,12 @@ function migrateDatabase(data) {
     preferences: {
       ...defaultSettings.preferences,
       ...(data.settings?.preferences || {}),
+      timeZone: normalizeTimeZone(data.settings?.preferences?.timeZone),
     },
   };
   migrateStudyDefaults(data);
   ensureUserCourses(data);
+  syncExamTimetableEntries(data);
   data.schemaVersion = DATA_SCHEMA_VERSION;
   return data;
 }
@@ -1025,9 +1241,9 @@ function getRemoteReady() {
   return Boolean(remoteSupabase && remoteUser?.id);
 }
 
-function toDateTimeLocal(value) {
+function toDateTimeLocal(value, timeZone = getConfiguredTimeZone()) {
   if (!value) return null;
-  return String(value).slice(0, 16);
+  return instantToLocalDateTime(value, timeZone);
 }
 
 function toProfileUser(profile, authUser) {
@@ -1066,15 +1282,15 @@ function mapExamRow(row) {
   };
 }
 
-function mapTimetableRow(row, subjects) {
+function mapTimetableRow(row, subjects, timeZone = getConfiguredTimeZone()) {
   return normalizeTimetableEntry({
     id: row.id,
     title: row.title,
     subjectId: row.course_id,
     subjectName: row.subject_name || undefined,
     category: row.category,
-    start: toDateTimeLocal(row.starts_at),
-    end: toDateTimeLocal(row.ends_at),
+    start: toDateTimeLocal(row.starts_at, timeZone),
+    end: toDateTimeLocal(row.ends_at, timeZone),
     isAllDay: row.is_all_day,
     kind: row.kind,
     completedDates: row.completed_dates,
@@ -1122,6 +1338,7 @@ function createEmptyDataForUser(profile, authUser) {
 
 function setDBForUser(data) {
   syncCompatibilityTables(data);
+  syncExamTimetableEntries(data);
   saveDB(data);
   return data;
 }
@@ -1144,25 +1361,30 @@ async function replaceOwnedRows(table, userId, rows) {
   if (insertResult.error) throw insertResult.error;
 }
 
-function serializeTimetableEntry(entry, userId) {
+function serializeTimetableEntry(entry, userId, timeZone = getConfiguredTimeZone()) {
+  const normalized = normalizeTimetableEntry(entry, getDB()?.subjects || []);
+  const date = normalized.date || getTodayInTimeZone(timeZone);
+  const startTime = normalized.isAllDay ? '00:00' : (normalized.startTime || '09:00');
+  const endTime = normalized.isAllDay ? '23:59' : (normalized.endTime || startTime);
+
   return {
-    id: entry.id,
+    id: normalized.id,
     user_id: userId,
-    course_id: entry.subjectId || null,
-    subject_name: entry.subjectName || entry.subject || 'General',
-    title: entry.title || entry.label || 'Untitled Session',
-    category: normalizeCategory(entry.category || entry.type),
-    starts_at: parseDateSafe(entry.start)?.toISOString() || new Date().toISOString(),
-    ends_at: parseDateSafe(entry.end)?.toISOString() || new Date().toISOString(),
-    is_all_day: Boolean(entry.isAllDay),
-    kind: normalizeEventKind(entry.kind),
-    completed_dates: normalizeCompletedDates(entry.completedDates),
-    linked_topic_id: entry.linkedTopicId || null,
-    repeat: normalizeRepeat(entry.repeat),
-    repeat_until: entry.repeatUntil || null,
-    notes: String(entry.notes || ''),
-    system_seed: Boolean(entry.systemSeed),
-    locked: Boolean(entry.locked),
+    course_id: normalized.subjectId || null,
+    subject_name: normalized.subjectName || normalized.subject || 'General',
+    title: normalized.title || normalized.label || 'Untitled Session',
+    category: normalizeCategory(normalized.category || normalized.type),
+    starts_at: zonedWallTimeToISOString(date, startTime, timeZone),
+    ends_at: zonedWallTimeToISOString(date, endTime, timeZone),
+    is_all_day: Boolean(normalized.isAllDay),
+    kind: normalizeEventKind(normalized.kind),
+    completed_dates: normalizeCompletedDates(normalized.completedDates),
+    linked_topic_id: normalized.linkedTopicId || null,
+    repeat: normalizeRepeat(normalized.repeat),
+    repeat_until: normalized.repeatUntil || null,
+    notes: String(normalized.notes || ''),
+    system_seed: Boolean(normalized.systemSeed),
+    locked: Boolean(normalized.locked),
   };
 }
 
@@ -1172,6 +1394,7 @@ async function saveLocalToSupabase() {
   const data = getDB();
   if (!data) return;
   const userId = remoteUser.id;
+  const timeZone = getSettingsTimeZone(data.settings);
 
   const profileResult = await remoteSupabase.from('profiles').upsert({
     id: userId,
@@ -1220,9 +1443,9 @@ async function saveLocalToSupabase() {
     color: exam.color || '#6366f1',
   })));
 
-  await replaceOwnedRows('timetable_entries', userId, (data.timetable || []).map((entry) => (
-    serializeTimetableEntry(entry, userId)
-  )));
+  await replaceOwnedRows('timetable_entries', userId, (data.timetable || [])
+    .filter((entry) => !getLinkedExamId(entry))
+    .map((entry) => serializeTimetableEntry(entry, userId, timeZone)));
 
   await replaceOwnedRows('resources', userId, (data.resources || []).map((resource) => ({
     id: resource.id,
@@ -1267,21 +1490,24 @@ async function hydrateFromSupabase() {
   const settings = settingsResult.data;
   const courses = (coursesResult.data || []).map(mapCourseRow);
   const subjects = projectCoursesToSubjects(courses);
+  const hydratedSettings = {
+    ...defaultSettings,
+    academicLevel: settings?.academic_level || profile?.academic_level || defaultSettings.academicLevel,
+    examSittings: {
+      ...defaultSettings.examSittings,
+      ...(settings?.exam_sittings || {}),
+    },
+    preferences: {
+      ...defaultSettings.preferences,
+      ...(settings?.preferences || {}),
+      timeZone: normalizeTimeZone(settings?.preferences?.timeZone),
+    },
+  };
+  const timeZone = getSettingsTimeZone(hydratedSettings);
   const data = {
     schemaVersion: DATA_SCHEMA_VERSION,
     user: toProfileUser(profile, remoteUser),
-    settings: {
-      ...defaultSettings,
-      academicLevel: settings?.academic_level || profile?.academic_level || defaultSettings.academicLevel,
-      examSittings: {
-        ...defaultSettings.examSittings,
-        ...(settings?.exam_sittings || {}),
-      },
-      preferences: {
-        ...defaultSettings.preferences,
-        ...(settings?.preferences || {}),
-      },
-    },
+    settings: hydratedSettings,
     profile: profile || null,
     onboardingCompleted: Boolean(profile?.onboarding_completed),
     onboardingAnswers: profile?.onboarding_answers || {},
@@ -1289,7 +1515,7 @@ async function hydrateFromSupabase() {
     subjects,
     topics: flattenUserCourses(courses),
     exams: (examsResult.data || []).map(mapExamRow),
-    timetable: (timetableResult.data || []).map((row) => mapTimetableRow(row, subjects)),
+    timetable: (timetableResult.data || []).map((row) => mapTimetableRow(row, subjects, timeZone)),
     resources: (resourcesResult.data || []).map(mapResourceRow),
   };
 
@@ -1358,6 +1584,7 @@ export const db = {
         ...defaultSettings.preferences,
         ...(data.settings?.preferences || {}),
         ...(updates.preferences || {}),
+        timeZone: normalizeTimeZone(updates.preferences?.timeZone || data.settings?.preferences?.timeZone),
       },
     };
     saveDB(data);
@@ -1642,18 +1869,24 @@ export const db = {
     const data = getDB();
     const newExam = { id: uuidv4(), ...exam };
     data.exams.push(newExam);
+    syncExamTimetableEntries(data);
     saveDB(data);
     return newExam;
   },
   updateExam: (id, updates) => {
     const data = getDB();
     const idx = data.exams.findIndex((e) => e.id === id);
-    if (idx > -1) { data.exams[idx] = { ...data.exams[idx], ...updates }; saveDB(data); }
+    if (idx > -1) {
+      data.exams[idx] = { ...data.exams[idx], ...updates };
+      syncExamTimetableEntries(data);
+      saveDB(data);
+    }
     return data.exams[idx];
   },
   deleteExam: (id) => {
     const data = getDB();
     data.exams = data.exams.filter((e) => e.id !== id);
+    syncExamTimetableEntries(data);
     saveDB(data);
   },
 
@@ -1729,6 +1962,7 @@ export const db = {
   // --- Timetable ---
   getTimetable: () => {
     const data = getDB();
+    syncExamTimetableEntries(data);
     const subjects = data?.subjects || [];
     return (data?.timetable || []).map((entry) => normalizeTimetableEntry(entry, subjects));
   },

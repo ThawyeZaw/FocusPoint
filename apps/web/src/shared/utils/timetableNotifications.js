@@ -1,4 +1,9 @@
-import { db } from '@focuspoint/shared/study-data/mockDatabase';
+import {
+  db,
+  getConfiguredTimeZone,
+  getCurrentDateInTimeZone,
+  zonedWallTimeToDate,
+} from '@focuspoint/shared/study-data/mockDatabase';
 import { showAppNotification } from './notifications.js';
 
 const SENT_KEY = 'focuspoint_timetable_notification_log';
@@ -21,14 +26,6 @@ function parseDateOnly(value) {
   const [year, month, day] = String(value || '').split('-').map(Number);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day);
-}
-
-function parseLocalDateTime(date, time) {
-  const [hours, minutes] = String(time || '').split(':').map(Number);
-  const base = parseDateOnly(date);
-  if (!base || !Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  base.setHours(hours, minutes, 0, 0);
-  return base;
 }
 
 function addDays(date, days) {
@@ -72,8 +69,8 @@ function occursOn(event, day) {
   return false;
 }
 
-function getUpcomingOccurrences(now) {
-  const rangeStart = startOfDay(now);
+function getUpcomingOccurrences(timeZone) {
+  const rangeStart = startOfDay(getCurrentDateInTimeZone(timeZone));
   const rangeEnd = addDays(rangeStart, 2);
   const occurrences = [];
 
@@ -82,7 +79,7 @@ function getUpcomingOccurrences(now) {
     .forEach((event) => {
       for (let day = new Date(rangeStart); day <= rangeEnd; day = addDays(day, 1)) {
         if (!occursOn(event, day)) continue;
-        const startsAt = parseLocalDateTime(formatDateOnly(day), event.startTime);
+        const startsAt = zonedWallTimeToDate(formatDateOnly(day), event.startTime, timeZone);
         if (!startsAt) continue;
         occurrences.push({ event, startsAt });
       }
@@ -116,10 +113,10 @@ function hasSent(key, now) {
   return Boolean(readSentLog(now)[key]);
 }
 
-function buildReminder(occurrence, reminder) {
+function buildReminder(occurrence, reminder, timeZone) {
   const timestamp = occurrence.startsAt.getTime();
   const key = `${occurrence.event.id}:${timestamp}:${reminder.id}`;
-  const eventTime = occurrence.startsAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const eventTime = occurrence.startsAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone });
   const title = reminder.id === 'start' ? `${occurrence.event.title} starts now` : `${occurrence.event.title} starts soon`;
   const body = reminder.id === 'start'
     ? `${occurrence.event.title} is scheduled for ${eventTime}.`
@@ -135,11 +132,12 @@ function buildReminder(occurrence, reminder) {
 
 export function scheduleTimetableNotifications() {
   const now = Date.now();
+  const timeZone = getConfiguredTimeZone();
   const timers = [];
 
-  getUpcomingOccurrences(new Date(now)).forEach((occurrence) => {
+  getUpcomingOccurrences(timeZone).forEach((occurrence) => {
     REMINDERS.forEach((reminder) => {
-      const payload = buildReminder(occurrence, reminder);
+      const payload = buildReminder(occurrence, reminder, timeZone);
       const delay = payload.triggerAt - now;
 
       if (delay < 0 || delay > HORIZON_MS || hasSent(payload.key, now)) return;

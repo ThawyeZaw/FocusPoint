@@ -10,8 +10,14 @@
 /**
  * Calculate days remaining until a date
  */
+function parseDateOnly(value) {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  if (!year || !month || !day) return new Date(value);
+  return new Date(year, month - 1, day);
+}
+
 export function daysUntil(dateStr) {
-  const target = new Date(dateStr);
+  const target = parseDateOnly(dateStr);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
@@ -114,7 +120,7 @@ export function getExamCountdowns(exams, subjects) {
         subjectName: subject?.name || 'Unknown',
         subjectColor: subject?.color || '#6366f1',
         daysLeft,
-        isPast: daysLeft === 0 && new Date(exam.date) < new Date(),
+        isPast: daysLeft === 0 && parseDateOnly(exam.date) < new Date(),
         urgencyLevel: daysLeft <= 7 ? 'critical' : daysLeft <= 14 ? 'warning' : 'normal',
       };
     })
@@ -156,9 +162,9 @@ export function getTodaySchedule(timetable) {
     .filter((entry) => {
       if (!entry.start) return entry.day === today;
 
-      const startDate = new Date(entry.start);
+      const startDate = parseDateOnly(entry.date || String(entry.start).slice(0, 10));
       startDate.setHours(0, 0, 0, 0);
-      const repeatUntil = entry.repeatUntil ? new Date(`${entry.repeatUntil}T00:00`) : null;
+      const repeatUntil = entry.repeatUntil ? parseDateOnly(entry.repeatUntil) : null;
       if (repeatUntil) repeatUntil.setHours(0, 0, 0, 0);
 
       if (entry.repeat === 'daily') {
