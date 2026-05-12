@@ -505,6 +505,21 @@ function normalizeTime(value, fallback = '09:00') {
   return fallback;
 }
 
+function isTimeString(value) {
+  return /^\d{2}:\d{2}$/.test(String(value || '').trim());
+}
+
+function addMinutesToTimeString(time, minutesToAdd) {
+  if (!isTimeString(time)) return '';
+  const [hours, minutes] = String(time).split(':').map(Number);
+  const total = Math.max(0, Math.min(24 * 60 - 1, hours * 60 + minutes + minutesToAdd));
+  return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+}
+
+function normalizeOptionalTime(value) {
+  return isTimeString(value) ? String(value).trim() : '';
+}
+
 function normalizeCategory(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'self-study' || normalized === 'self study') return 'study';
@@ -783,6 +798,12 @@ function buildExamTimetableEntry(exam, subjects) {
   const date = parsedDate ? formatDateOnly(parsedDate) : getTodayInTimeZone();
   const subjectName = subject?.name || exam.subjectName || 'Exam';
   const title = `${subjectName}: ${String(exam.paper || 'Exam').trim() || 'Exam'}`;
+  const startTime = normalizeOptionalTime(exam.startTime);
+  let endTime = startTime ? normalizeOptionalTime(exam.endTime) : '';
+  if (startTime && (!endTime || endTime <= startTime)) {
+    endTime = addMinutesToTimeString(startTime, 60);
+  }
+  const isAllDay = !startTime;
 
   return withLegacyFields({
     id: getExamTimetableId(exam.id),
@@ -791,9 +812,11 @@ function buildExamTimetableEntry(exam, subjects) {
     subjectName,
     category: 'exam',
     date,
-    start: `${date}T00:00`,
-    end: `${date}T23:59`,
-    isAllDay: true,
+    start: `${date}T${isAllDay ? '00:00' : startTime}`,
+    end: `${date}T${isAllDay ? '23:59' : endTime}`,
+    startTime: isAllDay ? '' : startTime,
+    endTime: isAllDay ? '' : endTime,
+    isAllDay,
     kind: 'event',
     completedDates: [],
     linkedTopicId: null,
@@ -1278,6 +1301,8 @@ function mapExamRow(row) {
     subjectId: row.course_id,
     paper: row.paper,
     date: row.date,
+    startTime: row.start_time || '',
+    endTime: row.end_time || '',
     color: row.color || '#6366f1',
   };
 }
@@ -1867,7 +1892,10 @@ export const db = {
   getExams: () => getDB()?.exams || [],
   addExam: (exam) => {
     const data = getDB();
-    const newExam = { id: uuidv4(), ...exam };
+    const startTime = normalizeOptionalTime(exam?.startTime);
+    let endTime = startTime ? normalizeOptionalTime(exam?.endTime) : '';
+    if (startTime && (!endTime || endTime <= startTime)) endTime = addMinutesToTimeString(startTime, 60);
+    const newExam = { id: uuidv4(), ...exam, startTime, endTime };
     data.exams.push(newExam);
     syncExamTimetableEntries(data);
     saveDB(data);
@@ -1877,7 +1905,13 @@ export const db = {
     const data = getDB();
     const idx = data.exams.findIndex((e) => e.id === id);
     if (idx > -1) {
-      data.exams[idx] = { ...data.exams[idx], ...updates };
+      const next = { ...data.exams[idx], ...updates };
+      next.startTime = normalizeOptionalTime(next.startTime);
+      next.endTime = next.startTime ? normalizeOptionalTime(next.endTime) : '';
+      if (next.startTime && (!next.endTime || next.endTime <= next.startTime)) {
+        next.endTime = addMinutesToTimeString(next.startTime, 60);
+      }
+      data.exams[idx] = next;
       syncExamTimetableEntries(data);
       saveDB(data);
     }

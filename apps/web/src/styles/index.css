@@ -2117,6 +2117,48 @@ h1, h2, h3, h4 {
 
 /* ---- Course Management ---- */
 
+.course-tab-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--surface-secondary);
+  box-shadow: var(--shadow-card);
+}
+
+.course-tab {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.course-tab:hover,
+.course-tab.active {
+  color: var(--text-primary);
+  background: var(--surface-tertiary);
+}
+
+.course-tab.active {
+  color: white;
+  background: var(--color-accent-indigo);
+}
+
+.course-tab:active {
+  transform: translateY(1px);
+}
+
 .course-management-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.36fr) minmax(0, 1fr);
@@ -2129,9 +2171,16 @@ h1, h2, h3, h4 {
   gap: 20px;
 }
 
+.course-template-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.32fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .course-template-group-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -2338,6 +2387,54 @@ h1, h2, h3, h4 {
   gap: 10px;
 }
 
+.course-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+}
+
+.course-list-card {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--surface-tertiary);
+  padding: 16px;
+}
+
+.course-list-card.active {
+  border-color: color-mix(in srgb, var(--color-accent-indigo) 46%, var(--border-primary));
+  background: color-mix(in srgb, var(--surface-tertiary) 78%, var(--color-accent-indigo) 9%);
+}
+
+.course-list-card-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.course-list-card h3 {
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.course-list-card p {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.course-list-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .course-list-item {
   min-height: 64px;
   width: 100%;
@@ -2410,6 +2507,13 @@ h1, h2, h3, h4 {
 .course-editor-head p {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.course-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .course-range {
@@ -2662,6 +2766,38 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
+.input-field:read-only,
+.input-field:disabled,
+.select-field:disabled {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-input) 72%, var(--surface-tertiary));
+  cursor: default;
+}
+
+.input-field:disabled,
+.select-field:disabled {
+  opacity: 0.72;
+}
+
+.icon-field {
+  position: relative;
+  min-width: 0;
+}
+
+.icon-field-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.icon-field .icon-field-control {
+  padding-left: 42px;
+}
+
 /* ---- View Toggle (Daily/Weekly/Monthly) ---- */
 
 .view-toggle {
@@ -2792,6 +2928,14 @@ h1, h2, h3, h4 {
 
   .course-management-layout {
     grid-template-columns: 1fr;
+  }
+
+  .course-template-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .course-template-group-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .course-template-grid {
@@ -2994,11 +3138,18 @@ h1, h2, h3, h4 {
   }
 
   .course-template-grid,
+  .course-template-group-picker,
   .course-add-form,
   .course-detail-grid,
   .course-section-add,
   .course-topic-add,
   .course-topic-row {
+    grid-template-columns: 1fr;
+  }
+
+  .course-tab-list,
+  .course-list-card-actions,
+  .readonly-exam-card dl {
     grid-template-columns: 1fr;
   }
 
@@ -3995,6 +4146,64 @@ h1, h2, h3, h4 {
   background: rgba(244, 63, 94, 0.08);
   font-size: 12px;
   font-weight: 700;
+}
+
+.readonly-exam-card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid;
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.readonly-exam-card h3 {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.3;
+}
+
+.readonly-exam-type {
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.readonly-exam-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readonly-exam-card dl > div {
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: var(--surface-secondary);
+  padding: 10px 12px;
+}
+
+.readonly-exam-card dt {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.readonly-exam-card dd {
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.readonly-exam-note {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .modal-actions {

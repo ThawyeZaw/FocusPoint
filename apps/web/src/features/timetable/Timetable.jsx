@@ -516,7 +516,8 @@ function TimetableScreen() {
   const openEditModal = useCallback((occurrence) => {
     const original = events.find((event) => event.id === occurrence.originalId);
     if (!original) return;
-    setModal({ open: true, mode: 'edit', event: original });
+    const isLinkedExam = Boolean(original.linkedExamId || original.locked);
+    setModal({ open: true, mode: isLinkedExam ? 'readonly-exam' : 'edit', event: original });
   }, [events]);
 
   const closeModal = () => setModal({ open: false, mode: 'create', event: null });
@@ -662,14 +663,18 @@ function TimetableScreen() {
       )}
 
       {modal.open && (
-        <EventModal
-          mode={modal.mode}
-          event={modal.event}
-          typeOptions={typeOptions}
-          onSave={saveModal}
-          onDelete={removeEvent}
-          onClose={closeModal}
-        />
+        modal.mode === 'readonly-exam' ? (
+          <ReadOnlyExamModal event={modal.event} onClose={closeModal} />
+        ) : (
+          <EventModal
+            mode={modal.mode}
+            event={modal.event}
+            typeOptions={typeOptions}
+            onSave={saveModal}
+            onDelete={removeEvent}
+            onClose={closeModal}
+          />
+        )
       )}
     </div>
   );
@@ -1112,6 +1117,63 @@ function SearchableTypeCombobox({ value, options, onChange }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ReadOnlyExamModal({ event, onClose }) {
+  const meta = getTypeMeta(event.type);
+  const dateLabel = event.date
+    ? format(parseDateOnly(event.date), 'EEEE, MMM d, yyyy')
+    : 'No date set';
+  const timeLabel = event.isAllDay ? 'All day' : `${event.startTime}-${event.endTime || addMinutesToTime(event.startTime, 60)}`;
+
+  useEffect(() => {
+    const onKeyDown = (keyEvent) => {
+      if (keyEvent.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-content timetable-modal-v2" onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2>Exam Details</h2>
+            <p>Managed from Exam Countdown</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="readonly-exam-card" style={{ borderColor: meta.border, background: meta.bg }}>
+          <span className="readonly-exam-type" style={{ color: meta.text }}>{titleCase(event.type)}</span>
+          <h3>{event.title}</h3>
+          <dl>
+            <div>
+              <dt>Date</dt>
+              <dd>{dateLabel}</dd>
+            </div>
+            <div>
+              <dt>Time</dt>
+              <dd>{timeLabel}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <p className="readonly-exam-note">
+          This timetable item is linked to Exam Countdown, so it is read-only here.
+        </p>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-primary touch-target" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

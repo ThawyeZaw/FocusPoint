@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Globe2,
   GraduationCap,
+  Lock,
   LogOut,
   Mail,
   Moon,
@@ -167,24 +168,24 @@ export default function Settings({ onDataChange }) {
 
           <label className="space-y-2">
             <span className="settings-field-label">Email</span>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <div className="icon-field">
+              <Mail className="icon-field-icon h-4 w-4" />
               <input
-                className="input-field pl-9"
+                className="input-field icon-field-control"
                 type="email"
                 value={user.email || ''}
-                onChange={(event) => updateProfileField('email', event.target.value)}
                 placeholder="you@example.com"
+                readOnly
               />
             </div>
           </label>
 
           <label className="space-y-2">
             <span className="settings-field-label">Academic level</span>
-            <div className="relative">
-              <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <div className="icon-field">
+              <GraduationCap className="icon-field-icon h-4 w-4" />
               <select
-                className="select-field pl-9"
+                className="select-field icon-field-control"
                 value={user.level || settings.academicLevel || 'A-Level'}
                 onChange={(event) => updateProfileField('level', event.target.value)}
               >
@@ -192,6 +193,20 @@ export default function Settings({ onDataChange }) {
                 <option value="IGCSE">IGCSE</option>
                 <option value="Other">Other</option>
               </select>
+            </div>
+          </label>
+
+          <label className="space-y-2">
+            <span className="settings-field-label">Password</span>
+            <div className="icon-field">
+              <Lock className="icon-field-icon h-4 w-4" />
+              <input
+                className="input-field icon-field-control"
+                type="password"
+                value="************"
+                readOnly
+                aria-label="Password is managed by your sign-in provider"
+              />
             </div>
           </label>
         </div>
@@ -239,10 +254,10 @@ export default function Settings({ onDataChange }) {
                 Current: {getTimeZoneLabel(selectedTimeZone)}
               </p>
             </div>
-            <div className="relative w-full sm:max-w-xs">
-              <Globe2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <div className="icon-field w-full sm:max-w-xs">
+              <Globe2 className="icon-field-icon h-4 w-4" />
               <select
-                className="select-field pl-9"
+                className="select-field icon-field-control"
                 value={selectedTimeZone}
                 onChange={(event) => chooseTimeZone(event.target.value)}
               >

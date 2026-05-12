@@ -18,6 +18,24 @@ function parseExamDate(value) {
   return new Date(year, month - 1, day);
 }
 
+function timeToMinutes(value) {
+  const [hours, minutes] = String(value || '').split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function addMinutesToTime(value, minutesToAdd) {
+  const minutes = timeToMinutes(value);
+  if (minutes == null) return '';
+  const total = Math.max(0, Math.min(24 * 60 - 1, minutes + minutesToAdd));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function formatExamTime(exam) {
+  if (!exam.startTime) return 'All day';
+  return `${exam.startTime}-${exam.endTime || addMinutesToTime(exam.startTime, 60)}`;
+}
+
 export default function ExamCountdown({ onDataChange }) {
   const subjects = db.getSubjects();
   const [exams, setExams] = useState(() => db.getExams());
@@ -40,6 +58,7 @@ export default function ExamCountdown({ onDataChange }) {
             day: 'numeric',
             year: 'numeric',
           }) || exam.date,
+          timeFormatted: formatExamTime(exam),
         };
       })
       .sort((a, b) => a.daysLeft - b.daysLeft);
@@ -88,7 +107,9 @@ export default function ExamCountdown({ onDataChange }) {
             <p className="text-lg font-semibold mt-3" style={{ color: 'var(--text-primary)' }}>
               {enrichedExams[0].subjectName} — {enrichedExams[0].paper}
             </p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>{enrichedExams[0].dateFormatted}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              {enrichedExams[0].dateFormatted} / {enrichedExams[0].timeFormatted}
+            </p>
             {/* Circular progress */}
             <div className="flex justify-center mt-8">
               <CountdownRing daysLeft={enrichedExams[0].daysLeft} maxDays={60} color={enrichedExams[0].subjectColor} />
@@ -151,7 +172,7 @@ export default function ExamCountdown({ onDataChange }) {
 
               <div className="flex items-center gap-2 mt-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
                 <Calendar className="w-3 h-3" />
-                {exam.dateFormatted}
+                {exam.dateFormatted} / {exam.timeFormatted}
               </div>
 
               <div className="progress-bar-track mt-5">
@@ -218,13 +239,28 @@ function AddExamModal({ subjects, onClose, onAdd }) {
     subjectId: subjects[0]?.id || '',
     paper: '',
     date: '',
+    startTime: '',
+    endTime: '',
     color: '#6366f1',
   });
+  const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError('');
     if (!form.paper || !form.date) return;
-    db.addExam(form);
+    const startTime = form.startTime || '';
+    let endTime = form.endTime || '';
+    if (endTime && !startTime) {
+      setError('Add a start time before adding an end time.');
+      return;
+    }
+    if (startTime && !endTime) endTime = addMinutesToTime(startTime, 60);
+    if (startTime && timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      setError('End time must be after start time.');
+      return;
+    }
+    db.addExam({ ...form, startTime, endTime });
     onAdd();
   };
 
@@ -252,6 +288,17 @@ function AddExamModal({ subjects, onClose, onAdd }) {
             <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>Exam Date</label>
             <input type="date" className="input-field" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>Start Time (optional)</label>
+              <input type="time" className="input-field" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>End Time (optional)</label>
+              <input type="time" className="input-field" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} disabled={!form.startTime} />
+            </div>
+          </div>
+          {error && <p className="form-error">{error}</p>}
           <div className="modal-form-actions flex gap-4 pt-2">
             <button type="button" className="btn-secondary flex-1 touch-target justify-center" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn-primary flex-1 touch-target justify-center">

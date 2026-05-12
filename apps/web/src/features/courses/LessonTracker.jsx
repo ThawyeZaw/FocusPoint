@@ -108,10 +108,6 @@ export default function LessonTracker({ onDataChange }) {
               ))}
             </select>
           </label>
-          <button type="button" className="btn-secondary min-h-11 justify-center" onClick={goToTemplates}>
-            <Layers3 className="h-4 w-4" />
-            Manage
-          </button>
         </div>
 
         <div className="tracker-course-pills">

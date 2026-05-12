@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Edit3,
   GraduationCap,
   Layers3,
   Plus,
@@ -30,6 +31,11 @@ const DEFAULT_COURSE_FORM = {
   structureType: 'custom',
 };
 
+const COURSE_TABS = [
+  { id: 'templates', label: 'Templates', icon: GraduationCap },
+  { id: 'my-courses', label: 'My Courses', icon: ClipboardList },
+];
+
 export default function CourseManagement({ onDataChange }) {
   const navigate = useNavigate();
   const [courses, setCourses] = useState(() => db.getUserCourses());
@@ -37,7 +43,8 @@ export default function CourseManagement({ onDataChange }) {
   const [courseForm, setCourseForm] = useState(DEFAULT_COURSE_FORM);
   const [sectionDraft, setSectionDraft] = useState('');
   const [topicDrafts, setTopicDrafts] = useState({});
-  const [selectedTemplateGroupId, setSelectedTemplateGroupId] = useState(null);
+  const [selectedTemplateGroupId, setSelectedTemplateGroupId] = useState(() => curriculumTemplateGroups[0]?.id || null);
+  const [activeTab, setActiveTab] = useState('templates');
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const activeCourse = useMemo(
@@ -66,6 +73,7 @@ export default function CourseManagement({ onDataChange }) {
   const addTemplate = (templateId) => {
     const course = db.addCourseFromTemplate(templateId);
     refreshCourses(course?.id);
+    if (course?.id) setActiveTab('edit');
   };
 
   const addCustomCourse = (event) => {
@@ -80,6 +88,12 @@ export default function CourseManagement({ onDataChange }) {
     });
     setCourseForm(DEFAULT_COURSE_FORM);
     refreshCourses(course?.id);
+    if (course?.id) setActiveTab('edit');
+  };
+
+  const selectCourseForEdit = (courseId) => {
+    setActiveCourseId(courseId);
+    setActiveTab('edit');
   };
 
   const updateCourse = (updates) => {
@@ -170,13 +184,32 @@ export default function CourseManagement({ onDataChange }) {
         </div>
       </header>
 
-      <div className="course-creation-layout">
+      <nav className="course-tab-list" aria-label="Course management sections">
+        {COURSE_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              type="button"
+              key={tab.id}
+              className={`course-tab ${isActive ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {activeTab === 'templates' && (
         <section className="glass-card-static course-template-library space-y-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <SectionTitle
               icon={<GraduationCap className="h-4 w-4 text-accent-indigo" />}
               title="Choose From Course Templates"
-              description="Add a read-only blueprint, then personalize your own copy in the editor."
+              description="Pick a curriculum first, then add a course blueprint to your own editable courses."
             />
             <span className="dashboard-chip w-fit">
               <Layers3 className="h-3.5 w-3.5 text-accent-emerald" />
@@ -184,42 +217,53 @@ export default function CourseManagement({ onDataChange }) {
             </span>
           </div>
 
-          <div className="course-template-group-picker" role="list" aria-label="Course template groups">
-            {curriculumTemplateGroups.map((group) => {
-              const isSelected = selectedTemplateGroupId === group.id;
-              return (
-                <button
-                  type="button"
-                  key={group.id}
-                  className={`course-template-group-button ${isSelected ? 'active' : ''}`}
-                  aria-pressed={isSelected}
-                  onClick={() => setSelectedTemplateGroupId(group.id)}
-                >
-                  <span className="min-w-0">
-                    <strong>{group.label}</strong>
-                    {group.description && <small>{group.description}</small>}
-                  </span>
-                  <span>{group.templates.length}</span>
-                </button>
-              );
-            })}
+          <div className="course-template-layout">
+            <div className="course-template-group-picker" role="list" aria-label="Course template groups">
+              {curriculumTemplateGroups.map((group) => {
+                const isSelected = selectedTemplateGroupId === group.id;
+                return (
+                  <button
+                    type="button"
+                    key={group.id}
+                    className={`course-template-group-button ${isSelected ? 'active' : ''}`}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedTemplateGroupId(group.id)}
+                  >
+                    <span className="min-w-0">
+                      <strong>{group.label}</strong>
+                      {group.description && <small>{group.description}</small>}
+                    </span>
+                    <span>{group.templates.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedTemplateGroup && (
+              <TemplateGroup
+                group={selectedTemplateGroup}
+                addedTemplateIds={addedTemplateIds}
+                onAddTemplate={addTemplate}
+              />
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'my-courses' && (
+        <section className="glass-card-static space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <SectionTitle
+              icon={<ClipboardList className="h-4 w-4 text-accent-amber" />}
+              title="My Courses"
+              description="Edit an existing course, or create your own blank course for Tracker."
+            />
+            <button type="button" className="btn-secondary min-h-11 justify-center" onClick={() => setActiveTab('templates')}>
+              <GraduationCap className="h-4 w-4" />
+              Browse Templates
+            </button>
           </div>
 
-          {selectedTemplateGroup && (
-            <TemplateGroup
-              group={selectedTemplateGroup}
-              addedTemplateIds={addedTemplateIds}
-              onAddTemplate={addTemplate}
-            />
-          )}
-        </section>
-
-        <section className="glass-card-static course-custom-panel space-y-5">
-          <SectionTitle
-            icon={<Plus className="h-4 w-4 text-accent-cyan" />}
-            title="Add Your Own Course"
-            description="Start blank, then add sections and topics in the editor so Tracker can follow it."
-          />
           <form className="course-add-form" onSubmit={addCustomCourse}>
             <label className="space-y-2">
               <span className="course-field-label">Course name</span>
@@ -255,36 +299,42 @@ export default function CourseManagement({ onDataChange }) {
               Add Course
             </button>
           </form>
-        </section>
-      </div>
-
-      <div className="course-management-layout">
-        <section className="glass-card-static space-y-4">
-          <SectionTitle
-            icon={<ClipboardList className="h-4 w-4 text-accent-amber" />}
-            title="Active Courses"
-            description="Select a course to edit its details and syllabus."
-          />
 
           {courses.length > 0 ? (
-            <div className="course-list">
+            <div className="course-card-grid">
               {courses.map((course) => {
                 const isActive = activeCourse?.id === course.id;
                 const stats = getCourseStats(course);
                 return (
-                  <button
-                    type="button"
-                    key={course.id}
-                    className={`course-list-item ${isActive ? 'active' : ''}`}
-                    onClick={() => setActiveCourseId(course.id)}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    <span className="course-color-dot" style={{ background: course.color }} />
-                    <span className="min-w-0 flex-1">
-                      <strong>{course.title}</strong>
-                      <small>{course.curriculum} / {stats.total} topics</small>
-                    </span>
-                  </button>
+                  <article key={course.id} className={`course-list-card ${isActive ? 'active' : ''}`}>
+                    <div className="course-list-card-main">
+                      <span className="course-color-dot" style={{ background: course.color }} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wide text-accent-indigo">{course.curriculum}</p>
+                        <h3>{course.title}</h3>
+                        <p>{stats.total} topics / {stats.percent}% complete</p>
+                      </div>
+                    </div>
+                    <div className="course-list-card-actions">
+                      <button type="button" className="btn-secondary min-h-11 justify-center" onClick={() => selectCourseForEdit(course.id)}>
+                        <Edit3 className="h-4 w-4" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger min-h-11 justify-center"
+                        onClick={() => setPendingDelete({
+                          type: 'course',
+                          courseId: course.id,
+                          title: `Remove ${course.title}?`,
+                          description: 'This deletes the course, its tracked topics, related exams, and linked resources.',
+                        })}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </button>
+                    </div>
+                  </article>
                 );
               })}
             </div>
@@ -292,7 +342,9 @@ export default function CourseManagement({ onDataChange }) {
             <EmptyCourses />
           )}
         </section>
+      )}
 
+      {activeTab === 'edit' && (
         <section className="glass-card-static course-editor">
           {activeCourse ? (
             <CourseEditor
@@ -306,6 +358,7 @@ export default function CourseManagement({ onDataChange }) {
               onSectionUpdate={updateSection}
               onAddTopic={addTopic}
               onTopicUpdate={updateTopic}
+              onBackToCourses={() => setActiveTab('my-courses')}
               onDeleteCourse={() => setPendingDelete({
                 type: 'course',
                 courseId: activeCourse.id,
@@ -330,7 +383,7 @@ export default function CourseManagement({ onDataChange }) {
             <EmptyEditor />
           )}
         </section>
-      </div>
+      )}
 
       {pendingDelete && (
         <DeleteDialog
@@ -355,6 +408,7 @@ function CourseEditor({
   onSectionUpdate,
   onAddTopic,
   onTopicUpdate,
+  onBackToCourses,
   onDeleteCourse,
   onDeleteSection,
   onDeleteTopic,
@@ -369,10 +423,16 @@ function CourseEditor({
           <h2>{course.title}</h2>
           <p>{stats.total} topics / {stats.mastered} mastered / {stats.percent}% complete</p>
         </div>
-        <button type="button" className="btn-danger min-h-11 justify-center" onClick={onDeleteCourse}>
-          <Trash2 className="h-4 w-4" />
-          Delete
-        </button>
+        <div className="course-editor-actions">
+          <button type="button" className="btn-secondary min-h-11 justify-center" onClick={onBackToCourses}>
+            <ArrowLeft className="h-4 w-4" />
+            Back to My Courses
+          </button>
+          <button type="button" className="btn-danger min-h-11 justify-center" onClick={onDeleteCourse}>
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
+        </div>
       </div>
 
       <div className="course-detail-grid">
