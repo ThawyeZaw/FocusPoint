@@ -908,6 +908,29 @@ function migrateStudyDefaults(data) {
   pruneOrphanedStudyData(data);
 }
 
+function ensurePrototypeProfile(data) {
+  data.user = {
+    ...defaultUser,
+    ...(data.user || {}),
+  };
+  data.profile = {
+    ...defaultProfile,
+    ...(data.profile || {}),
+    id: data.user.id || defaultProfile.id,
+    email: data.user.email || defaultProfile.email,
+    full_name: data.user.name || defaultProfile.full_name,
+    academic_level: data.user.level || data.settings?.academicLevel || defaultProfile.academic_level,
+    onboarding_completed: true,
+    onboarding_answers: {
+      ...defaultProfile.onboarding_answers,
+      ...(data.onboardingAnswers || {}),
+      ...(data.profile?.onboarding_answers || {}),
+    },
+  };
+  data.onboardingCompleted = true;
+  data.onboardingAnswers = data.profile.onboarding_answers;
+}
+
 function migrateDatabase(data) {
   if (!data || typeof data !== 'object') return null;
   migrateTimetable(data);
@@ -930,6 +953,7 @@ function migrateDatabase(data) {
   };
   migrateStudyDefaults(data);
   ensureUserCourses(data);
+  ensurePrototypeProfile(data);
   syncExamTimetableEntries(data);
   data.schemaVersion = DATA_SCHEMA_VERSION;
   return data;
@@ -971,6 +995,29 @@ const defaultUser = {
   avatar: null,
   level: 'A-Level',
   createdAt: '2026-03-01T00:00:00Z',
+};
+
+const defaultProfile = {
+  id: defaultUser.id,
+  email: defaultUser.email,
+  full_name: defaultUser.name,
+  avatar_url: defaultUser.avatar,
+  academic_level: defaultUser.level,
+  onboarding_completed: true,
+  onboarding_answers: {
+    name: defaultUser.name,
+    email: defaultUser.email,
+    academicLevel: defaultUser.level,
+    curriculum: 'Edexcel IAL',
+    courses: 'Mathematics, Further Mathematics, Physics, Information Technology',
+    examSession: 'May/June 2026',
+    examDate: '2026-06-01',
+    weeklyStudyHours: '8',
+    schoolHours: 'Mon-Fri 08:00-14:00',
+    studyGoal: 'Prototype workspace for testing FocusPoint with local mock data.',
+    accentColor: defaultSettings.preferences.accentColor,
+    completedAt: '2026-03-01T00:00:00Z',
+  },
 };
 
 // ---------- Universal Course Helpers ----------

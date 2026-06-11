@@ -186,12 +186,12 @@ export default function App() {
         <div className="page-wrapper">
           {setupError && (
             <div className="supabase-setup-alert" role="alert">
-              Supabase setup needs attention: {setupError}
+              Prototype setup needs attention: {setupError}
             </div>
           )}
           {syncingWorkspace && !setupError && (
             <div className="supabase-sync-alert" role="status">
-              Syncing latest workspace...
+              Loading workspace...
             </div>
           )}
           <Routes>

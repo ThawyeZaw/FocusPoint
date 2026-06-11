@@ -1,14 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@focuspoint/shared/study-data/mockDatabase';
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient.js';
 
 const AuthContext = createContext(null);
-
-function getAuthRedirectUrl() {
-  if (typeof window === 'undefined') return undefined;
-  return window.location.origin;
-}
 
 function nextWeekdayDate(dayOffset = 1) {
   const date = new Date();
@@ -29,12 +23,6 @@ function formatDate(date) {
 
 function formatDateTime(date) {
   return `${formatDate(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-function hasMatchingCachedWorkspace(authUser) {
-  if (!authUser || !db.isOnboardingComplete()) return false;
-  const cachedUser = db.getUser();
-  return cachedUser?.id === authUser.id || Boolean(authUser.email && cachedUser?.email === authUser.email);
 }
 
 function seedWeeklyStudyBlock(course, answers) {
@@ -65,120 +53,76 @@ function normalizeCourseNames(value) {
     .filter(Boolean);
 }
 
+function createPrototypeSession(authUser = db.getUser()) {
+  const userName = authUser?.name || authUser?.email?.split('@')[0] || 'Prototype Student';
+  const user = {
+    id: authUser?.id || 'prototype-user',
+    email: authUser?.email || 'prototype@focuspoint.local',
+    created_at: authUser?.createdAt || new Date().toISOString(),
+    user_metadata: {
+      full_name: userName,
+    },
+  };
+
+  return {
+    access_token: 'focuspoint-prototype-session',
+    token_type: 'bearer',
+    user,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [syncingWorkspace, setSyncingWorkspace] = useState(false);
+  const [syncingWorkspace] = useState(false);
   const [setupError, setSetupError] = useState('');
 
-  // When env vars are missing, supabase is null — we handle this gracefully.
-  const supabaseMissing = !isSupabaseConfigured;
-
-  const loadWorkspace = useCallback(async (nextSession) => {
+  const loadWorkspace = useCallback(() => {
+    db.disconnectSupabase();
+    const data = db.init();
+    const nextSession = createPrototypeSession(data.user);
     setSession(nextSession);
-    setUser(nextSession?.user || null);
+    setUser(nextSession.user);
+    setProfile(data.profile || db.getProfile() || { onboarding_completed: db.isOnboardingComplete() });
     setSetupError('');
-
-    if (!nextSession?.user) {
-      db.disconnectSupabase();
-      setProfile(null);
-      setLoading(false);
-      setSyncingWorkspace(false);
-      return;
-    }
-
-    db.connectSupabase({ supabase, user: nextSession.user });
-    const hasCache = hasMatchingCachedWorkspace(nextSession.user);
-    const cachedProfile = db.getProfile();
-    if (hasCache) {
-      setProfile(cachedProfile || { onboarding_completed: true });
-      setLoading(false);
-      setSyncingWorkspace(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const data = await db.hydrateFromSupabase();
-      setProfile(data.profile || db.getProfile());
-    } catch (error) {
-      console.error('Supabase workspace load failed:', error);
-      setSetupError(error.message || 'Supabase workspace is not ready yet.');
-      if (hasCache) {
-        setProfile(cachedProfile || db.getProfile());
-      } else {
-        db.createEmptyWorkspace(null, nextSession.user);
-        setProfile(db.getProfile());
-      }
-    } finally {
-      setLoading(false);
-      setSyncingWorkspace(false);
-    }
+    setLoading(false);
+    return nextSession;
   }, []);
 
   useEffect(() => {
-    // If Supabase is not configured, stop loading and show a clear error.
-    if (supabaseMissing) {
-      setSetupError(
-        'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to your environment variables.'
-      );
-      setLoading(false);
-      return;
-    }
+    loadWorkspace();
+  }, [loadWorkspace]);
 
-    let isMounted = true;
-
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!isMounted) return;
-      if (error) {
-        setSetupError(error.message);
-        setLoading(false);
-        return;
-      }
-      loadWorkspace(data.session);
+  const signUp = useCallback(async ({ name, email }) => {
+    const updatedUser = db.updateUser({
+      name: name || email?.split('@')[0] || 'Prototype Student',
+      email: email || 'prototype@focuspoint.local',
     });
+    const nextSession = createPrototypeSession(updatedUser);
+    setSession(nextSession);
+    setUser(nextSession.user);
+    setProfile(db.getProfile() || { onboarding_completed: db.isOnboardingComplete() });
+    return { user: nextSession.user, session: nextSession };
+  }, []);
 
-    const { data: subscriptionData } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
-      setLoading(true);
-      loadWorkspace(nextSession);
-    });
-
-    return () => {
-      isMounted = false;
-      subscriptionData.subscription.unsubscribe();
-    };
-  }, [loadWorkspace, supabaseMissing]);
-
-  const signUp = useCallback(async ({ name, email, password }) => {
-    if (supabaseMissing) throw new Error('Supabase is not configured.');
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: getAuthRedirectUrl(),
-        data: { full_name: name },
-      },
-    });
-    if (error) throw error;
-    return data;
-  }, [supabaseMissing]);
-
-  const signIn = useCallback(async ({ email, password }) => {
-    if (supabaseMissing) throw new Error('Supabase is not configured.');
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
-  }, [supabaseMissing]);
+  const signIn = useCallback(async ({ email }) => {
+    const currentUser = db.getUser();
+    const updatedUser = email ? db.updateUser({ email }) : currentUser;
+    const nextSession = createPrototypeSession(updatedUser);
+    setSession(nextSession);
+    setUser(nextSession.user);
+    setProfile(db.getProfile() || { onboarding_completed: db.isOnboardingComplete() });
+    return { user: nextSession.user, session: nextSession };
+  }, []);
 
   const signOut = useCallback(async () => {
-    if (supabaseMissing) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
     db.disconnectSupabase();
-  }, [supabaseMissing]);
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+  }, []);
 
   const completeOnboarding = useCallback(async (answers) => {
     const currentUser = db.updateUser({
@@ -238,7 +182,6 @@ export function AuthProvider({ children }) {
       email: currentUser.email,
       completedAt: new Date().toISOString(),
     });
-    await db.saveLocalToSupabase();
     setProfile(completed.profile || db.getProfile());
   }, [user?.email]);
 
@@ -255,7 +198,7 @@ export function AuthProvider({ children }) {
     signIn,
     signOut,
     completeOnboarding,
-    refreshWorkspace: () => loadWorkspace(session),
+    refreshWorkspace: loadWorkspace,
   }), [completeOnboarding, loadWorkspace, loading, profile, session, setupError, signIn, signOut, signUp, syncingWorkspace, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

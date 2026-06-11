@@ -359,7 +359,7 @@ export default function Settings({ onDataChange }) {
                 <div>
                   <h2 id="signout-title">Sign out?</h2>
                   <p id="signout-description">
-                    You'll be signed out on this device. Your study data will stay safe in the cloud and you can sign back in anytime.
+                    You'll leave the prototype workspace on this device. Your mock study data stays in this browser.
                   </p>
                 </div>
               </div>

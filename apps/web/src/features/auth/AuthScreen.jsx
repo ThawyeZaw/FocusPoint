@@ -25,7 +25,7 @@ export default function AuthScreen() {
       if (isSignup) {
         const data = await signUp(form);
         if (!data.session) {
-          setStatus('Check your email to confirm your account, then return to FocusPoint.');
+          setStatus('Prototype account created for this browser.');
         }
       } else {
         await signIn(form);
@@ -46,7 +46,7 @@ export default function AuthScreen() {
           <span className="auth-brand-icon"><BookOpenCheck className="h-5 w-5" /></span>
           <div>
             <h1>FocusPoint</h1>
-            <p>Sign in to sync your study plan across devices.</p>
+            <p>Use a local prototype workspace with mock study data.</p>
           </div>
         </div>
 
